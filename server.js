@@ -1,8 +1,8 @@
-// server.js
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
+const Semaphore = require('semaphore');
 
 const app = express();
 const server = http.createServer(app);
@@ -17,34 +17,56 @@ app.use((req, res, next) => {
   next();
 });
 
-
 const PORT = process.env.PORT || 3001;
 
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
 
-io.on('connection', (socket) => {
+const dataSemaphore = Semaphore(1); // Inicia el semáforo con un contador de 1
+
+// Wait function
+const wait = async () => {
+  return new Promise((resolve) => {
+    dataSemaphore.take(() => {
+      resolve();
+    });
+  });
+};
+
+// Signal function
+const signal = () => {
+  dataSemaphore.leave();
+};
+
+io.on('connection', async (socket) => {
   console.log('Cliente conectado');
 
   // Envía un mensaje de conexión exitosa al cliente
   socket.emit('connectionSuccess', 'Conexión exitosa al servidor');
 
   // Enviar datos fijos cada 5 segundos
-  const sendFixedData = () => {
+  const sendFixedData = async () => {
+    await wait(); // Esperar a que el semáforo esté disponible
     const fixedData = {
       temperaturaAgua: 25,
       calidadAgua: 85,
       nivelOxigeno: 10,
-      cantidadComida: 300,
+      cantidadComida: 50,
       nivelPH: 7,
     };
 
     console.log('Enviando datos fijos al cliente:', fixedData);
     io.emit('sensorData', fixedData);
+
+    signal(); // Liberar el semáforo después de enviar los datos
+    
+    // Establecer el siguiente envío después de 10 segundos
+    setTimeout(sendFixedData, 10000);
   };
 
-  setInterval(sendFixedData, 10000); // Enviar cada 5 segundos
+  // Inicializar el primer envío después de 10 segundos
+  setTimeout(sendFixedData, 10000);
 
   socket.on('disconnect', () => {
     console.log('Cliente desconectado');
