@@ -39,36 +39,54 @@ const signal = () => {
   dataSemaphore.leave();
 };
 
+// Función para manejar excepciones no capturadas
+process.on('uncaughtException', (err) => {
+  console.error('Excepción capturada:', err);
+  process.exit(1); // Salir del proceso con un código de error
+});
+
+// Agregando monitor para monitorear el servidor
+console.log('Iniciando monitor...');
+setInterval(() => {
+  console.log('[Monitor Log]: El servidor está funcionando correctamente');
+}, 60000); // Registro cada 1 minuto
+
 io.on('connection', async (socket) => {
   console.log('Cliente conectado');
 
-  // Envía un mensaje de conexión exitosa al cliente
-  socket.emit('connectionSuccess', 'Conexión exitosa al servidor');
+  try {
+    // Envía un mensaje de conexión exitosa al cliente
+    socket.emit('connectionSuccess', 'Conexión exitosa al servidor');
 
-  // Enviar datos fijos cada 5 segundos
-  const sendFixedData = async () => {
-    await wait(); // Esperar a que el semáforo esté disponible
-    const fixedData = {
-      temperaturaAgua: 25,
-      calidadAgua: 85,
-      nivelOxigeno: 10,
-      cantidadComida: 50,
-      nivelPH: 7,
+    // Enviar datos fijos cada 5 segundos
+    const sendFixedData = async () => {
+      await wait(); // Esperar a que el semáforo esté disponible
+      const fixedData = {
+        temperaturaAgua: 25,
+        calidadAgua: 85,
+        nivelOxigeno: 10,
+        cantidadComida: 50,
+        nivelPH: 7,
+      };
+
+      console.log('Enviando datos fijos al cliente:', fixedData);
+      io.emit('sensorData', fixedData);
+
+      signal(); // Liberar el semáforo después de enviar los datos
+      
+      // Establecer el siguiente envío después de 10 segundos
+      setTimeout(sendFixedData, 10000);
     };
 
-    console.log('Enviando datos fijos al cliente:', fixedData);
-    io.emit('sensorData', fixedData);
-
-    signal(); // Liberar el semáforo después de enviar los datos
-    
-    // Establecer el siguiente envío después de 10 segundos
+    // Inicializar el primer envío después de 10 segundos
     setTimeout(sendFixedData, 10000);
-  };
 
-  // Inicializar el primer envío después de 10 segundos
-  setTimeout(sendFixedData, 10000);
-
-  socket.on('disconnect', () => {
-    console.log('Cliente desconectado');
-  });
+    socket.on('disconnect', () => {
+      console.log('Cliente desconectado');
+    });
+  } catch (err) {
+    console.error('Error en la conexión:', err);
+    socket.emit('connectionError', 'Ocurrió un error en la conexión');
+    socket.disconnect(true); // Desconectar al cliente en caso de error
+  }
 });
